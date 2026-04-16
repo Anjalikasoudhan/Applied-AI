@@ -1,0 +1,1 @@
+/* tailwind.config.js is not strictly required for @tailwindcss/vite v4 if using new CSS variables, but we can have it for compatibility if needed. Wait, tailwind 4 uses CSS rules. Let's just create an index.css */
