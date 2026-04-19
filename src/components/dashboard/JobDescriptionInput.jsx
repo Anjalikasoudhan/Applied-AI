@@ -2,22 +2,15 @@ import React, { useState } from 'react';
 import { Sparkles, ArrowRight, Briefcase } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const JobDescriptionInput = ({ onAnalyze }) => {
+// Now receiving isAnalyzing directly from the parent (Dashboard -> Zustand store)
+const JobDescriptionInput = ({ onAnalyze, isAnalyzing }) => {
   const [jdText, setJdText] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // In Day 2, we just simulate the UI freezing and button state.
-  // In Day 3/4, we will hook this up to the real API.
   const handleSubmit = (e) => {
     e.preventDefault();
     if (jdText.trim() && !isAnalyzing) {
-      setIsAnalyzing(true);
-      
-      // Simulate network request delay for Day 2 demonstration
-      setTimeout(() => {
-        setIsAnalyzing(false);
-        if (onAnalyze) onAnalyze(jdText);
-      }, 1500);
+       // Hand it off to the parent, state is now controlled globally!
+       onAnalyze(jdText);
     }
   };
 
@@ -40,7 +33,6 @@ const JobDescriptionInput = ({ onAnalyze }) => {
           </div>
           
           <div className="relative group">
-            {/* Soft glowing background behind the textarea */}
             <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-blue-500 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
             <textarea
               value={jdText}
