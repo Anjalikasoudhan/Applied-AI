@@ -2,6 +2,8 @@ import React from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Navbar from './components/layout/Navbar'
 import DashboardPage from './pages/DashboardPage'
+import AnalysisResultsPage from './pages/AnalysisResultsPage'
+import PortfolioPage from './pages/PortfolioPage'
 
 function App() {
   return (
@@ -17,6 +19,8 @@ function App() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 relative z-10">
         <Routes>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/analysis" element={<AnalysisResultsPage />} />
+          <Route path="/portfolio" element={<PortfolioPage />} />
           
           <Route path="/history" element={
             <div className="p-8 bg-card border border-border rounded-xl mt-10">

@@ -1,20 +1,22 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import JobDescriptionInput from '../components/dashboard/JobDescriptionInput';
 import { useJobAnalysisStore } from '../store/useJobAnalysisStore';
 import { useAnalyzeJob } from '../hooks/useAnalyzeJob';
 
 const DashboardPage = () => {
-  // Pull our global state tools from Zustand
-  const { currentAnalysis, isAnalyzing, error } = useJobAnalysisStore();
-
-  // Intialize our robust TanStack Query mutation hook
+  const { isAnalyzing, error } = useJobAnalysisStore();
   const { mutate: executeAnalysis } = useAnalyzeJob();
+  const navigate = useNavigate();
 
   const handleAnalyze = (jdText) => {
-    // Instead of raw try/catches, we just pass the text into the hook!
-    // The hook naturally updates the Zustand store while executing.
-    executeAnalysis(jdText);
+    // Fire the mutation. On success, navigate to the results page.
+    executeAnalysis(jdText, {
+      onSuccess: () => {
+        navigate('/analysis');
+      }
+    });
   };
 
   return (
@@ -47,39 +49,17 @@ const DashboardPage = () => {
       {/* Main Input Form */}
       <JobDescriptionInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
 
-      {/* Safety Error Display */}
+      {/* Error Display */}
       {error && (
-        <div className="mt-4 p-4 max-w-4xl w-full bg-destructive/10 border border-destructive/20 text-destructive rounded-xl text-center">
-          <p className="font-bold">Analysis Failed</p>
-          <p className="text-sm">{error}</p>
-        </div>
-      )}
-
-      {/* Day 4 Live AI Output Viewer */}
-      {currentAnalysis && (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="mt-12 p-8 w-full max-w-4xl bg-card border border-border rounded-xl shadow-lg flex flex-col"
+          className="mt-6 p-4 max-w-4xl w-full bg-destructive/10 border border-destructive/20 text-destructive rounded-xl text-center"
         >
-          <div className="flex items-center space-x-3 mb-4">
-             <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                <span className="text-xl">✨</span>
-             </div>
-             <h3 className="font-bold text-xl">Live Gemini AI Analysis Completed!</h3>
-          </div>
-          
-          <p className="text-muted-foreground text-sm mb-4">
-             This data came back natively from the Google Gemini 1.5 Pro API! 
-             Tomorrow (Day 5), we will map this data into the visual Rechart dashboards.
-          </p>
-
-          <div className="bg-background rounded-lg p-4 border border-border overflow-auto max-h-[500px] text-xs text-blue-400 font-mono shadow-inner">
-             <pre>{JSON.stringify(currentAnalysis, null, 2)}</pre>
-          </div>
+          <p className="font-bold">Analysis Failed</p>
+          <p className="text-sm mt-1">{error}</p>
         </motion.div>
       )}
-
     </div>
   );
 };

@@ -15,6 +15,7 @@ const Navbar = () => {
         
         <div className="flex flex-1 items-center justify-end space-x-4">
           <Link to="/" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">Dashboard</Link>
+          <Link to="/portfolio" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">My Portfolio</Link>
           <Link to="/history" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">History</Link>
           
           <div className="flex items-center gap-2 pl-4 border-l border-border">
