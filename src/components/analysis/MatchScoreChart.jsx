@@ -61,7 +61,7 @@ const MatchScoreChart = ({ score, categoryScores }) => {
         </p>
 
         {/* The radial chart is a semi-circle (180° to 0°) */}
-        <div className="h-[220px] w-full mt-4">
+        <div className="w-full mt-4" style={{ minWidth: 200, minHeight: 220, height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
             <RadialBarChart
               cx="50%"
@@ -109,7 +109,7 @@ const MatchScoreChart = ({ score, categoryScores }) => {
           Skill Categories
         </p>
 
-        <div className="flex-1 w-full min-h-[200px]">
+        <div className="flex-1 w-full" style={{ minWidth: 200, minHeight: 220, height: 220 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={barData}

@@ -1,8 +1,16 @@
 import React from 'react';
 import { Building2, Sparkles, UserCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/useAuthStore';
 const Navbar = () => {
+  const { user, signOut } = useAuthStore();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
@@ -19,13 +27,28 @@ const Navbar = () => {
           <Link to="/history" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">History</Link>
           
           <div className="flex items-center gap-2 pl-4 border-l border-border">
-            <button className="flex items-center justify-center h-9 w-9 rounded-full bg-secondary hover:bg-secondary/80 transition-colors">
-              <UserCircle className="h-5 w-5 text-secondary-foreground" />
-            </button>
-            <div className="hidden md:flex items-center text-sm px-3 py-1.5 rounded-full bg-primary/10 text-primary font-medium tracking-wide border border-primary/20 shadow-sm">
-                <Sparkles className="w-4 h-4 mr-2" />
-                Intern Demo
-            </div>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center text-sm px-3 py-1 rounded-full bg-secondary text-secondary-foreground font-medium tracking-wide border border-border shadow-sm gap-2">
+                  {user.user_metadata?.avatar_url ? (
+                    <img src={user.user_metadata.avatar_url} alt="Profile" className="w-5 h-5 rounded-full" />
+                  ) : (
+                    <UserCircle className="w-4 h-4 text-muted-foreground" />
+                  )}
+                  <span>{user.user_metadata?.full_name || user.email?.split('@')[0]}</span>
+                </div>
+                <button 
+                  onClick={handleSignOut}
+                  className="text-sm font-medium text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <Link to="/auth" className="flex items-center text-sm px-4 py-1.5 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors">
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
       </div>

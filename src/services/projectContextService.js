@@ -14,10 +14,12 @@ export const getProjectContext = () => {
       projects: userProjects.map(p => ({
         name: p.name,
         type: p.type,
+        githubUrl: p.githubUrl || 'N/A',
         // Optional formatting, since we changed them to simple strings for easy inputs:
         stack: p.stack.split(',').map(s => s.trim()),
         keyFeatures: p.keyFeatures.split(',').map(s => s.trim()),
         challengesSolved: p.challengesSolved.split(',').map(s => s.trim())
       }))
     };
+
 };

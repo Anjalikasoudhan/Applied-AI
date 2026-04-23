@@ -1,28 +1,33 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getProjectContext } from "./projectContextService";
+import Groq from 'groq-sdk';
+import { getProjectContext } from './projectContextService';
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+const groq = apiKey ? new Groq({ apiKey, dangerouslyAllowBrowser: true }) : null;
 
 const SYSTEM_PROMPT = `
 You are an expert technical recruiter and senior engineering manager.
-Given a Job Description (JD) and a Candidate's Project Context, your goal is to analyze the JD and match it against the candidate's existing projects.
+Given a Job Description (JD) and a Candidate's Project Context (a list of multiple projects), your goal is to analyze the JD and match it against the candidate's existing projects.
 
-IMPORTANT RULES:
-- Generate AT LEAST 6 projectBridgeNotes (aim for 8-10)
-- Generate AT LEAST 10 interviewQuestions (aim for 12-15)
-- Each hint must be a DETAILED 3-4 sentence answer guide, not a one-liner
-- Every skill in mustHaveSkills and niceToHaveSkills must appear in EITHER matchedSkills or missingSkills
+CRITICAL SKILL-MATCHING RULE:
+- Before placing a skill in "missingSkills", you MUST check the 'stack', 'keyFeatures', and 'type' of EVERY project provided.
+- If "React" or "React.js" appears in ANY project's stack, it MUST be moved to "matchedSkills". 
+- Do NOT ignore projects. Even a small mention of a technology in one project counts as a "Matched Skill".
 
-Extract the information into the following STRICT JSON structure without markdown wrapping:
+INTERVIEW QUESTION RULES:
+- SCALE THE QUESTIONS: Generate at least 5 questions PER PROJECT in the context.
+- If the user has 3 projects, you MUST generate at least 15 high-quality interview questions.
+- Ensure the questions are evenly distributed (e.g. 5 for Project A, 5 for Project B, 5 for Project C).
+- Each hint must be a DETAILED 3-4 sentence technical answer guide.
+
+EXTRACT THE INFORMATION INTO THE FOLLOWING STRICT JSON STRUCTURE:
 {
   "companyName": "string or null",
   "roleTitle": "string",
   "summary": "Short 2 sentence summary of the role",
   "mustHaveSkills": ["skill1", "skill2"],
   "niceToHaveSkills": ["skill1", "skill2"],
-  "matchedSkills": ["skill1 from JD that Candidate has"],
-  "missingSkills": ["skill1 from JD that Candidate lacks"],
+  "matchedSkills": ["Every skill from JD that appears in ANY candidate project"],
+  "missingSkills": ["Skills from JD that appear in ZERO candidate projects"],
   "matchScore": number (0 to 100),
   "categoryScores": {
     "frontend": number (0-100),
@@ -32,34 +37,37 @@ Extract the information into the following STRICT JSON structure without markdow
   },
   "projectBridgeNotes": [
     {
-      "jdRequirement": "React State Management",
-      "projectFeatureMatch": "FoodSathi Cart System",
-      "talkingPoint": "Detailed 2-3 sentence explanation of how to discuss this in the interview."
+      "jdRequirement": "JD Skill Name",
+      "projectFeatureMatch": "ProjectName: SpecificFeature",
+      "talkingPoint": "How this specific project feature proves you have this JD skill."
     }
   ],
   "interviewQuestions": [
     {
-      "question": "How did you manage state in your cart system?",
-      "reason": "JD asks for state management, FoodSathi uses it.",
-      "projectExample": "FoodSathi Cart",
-      "hint": "Detailed 3-4 sentence answer guide with specific technical details.",
+      "question": "string",
+      "reason": "Direct reference to JD requirement and [Specific Project Name]",
+      "projectExample": "Project Name",
+      "hint": "Technical guide on how to answer using this project as proof.",
       "confidence": "High"
     }
   ]
 }
-Ensure the output is strictly valid JSON, starting with { and ending with }. No \`\`\`json wrappers.
+Ensure output is strictly valid JSON.
 `;
 
-const MODELS_TO_TRY = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
+
+
+// Groq models — llama3 is fast and reliable
+const MODELS_TO_TRY = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
 
 export const analyzeJobDescription = async (jdText) => {
-  if (!genAI || apiKey === 'your_gemini_api_key_here') {
-    console.warn("No active Gemini API key found. Falling back to Mock data.");
+  if (!groq) {
+    console.warn("No Groq API key found. Falling back to demo data.");
     return getMockAnalysis(jdText);
   }
 
   const candidateContext = getProjectContext();
-  
+
   const userPrompt = `
     CANDIDATE PROJECT CONTEXT: 
     ${JSON.stringify(candidateContext)}
@@ -71,30 +79,34 @@ export const analyzeJobDescription = async (jdText) => {
 
   for (const modelName of MODELS_TO_TRY) {
     try {
-      console.log(`Trying model: ${modelName}...`);
-      const model = genAI.getGenerativeModel({ 
+      console.log(`Trying Groq model: ${modelName}...`);
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt }
+        ],
         model: modelName,
-        systemInstruction: SYSTEM_PROMPT
+        temperature: 0.3,
+        max_tokens: 4096
       });
 
-      const result = await model.generateContent(userPrompt);
-      const responseText = result.response.text();
-      
+      const responseText = chatCompletion.choices[0]?.message?.content || '';
+
       try {
-        const cleaned = responseText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(cleaned);
-      } catch(e) {
-        console.error("Failed to parse Gemini JSON:", e, responseText);
+      } catch (e) {
+        console.error("Failed to parse Groq JSON:", e, responseText);
         throw new Error("AI returned malformed JSON");
       }
 
     } catch (error) {
       if (modelName !== MODELS_TO_TRY[MODELS_TO_TRY.length - 1]) {
-        console.warn(`Model ${modelName} failed, trying next model...`);
+        console.warn(`Model ${modelName} failed, trying next...`);
         continue;
       }
-      
-      console.warn("All AI models failed. Using demo data. Try again in 30+ seconds for live AI.");
+      console.warn("All Groq models failed. Using demo data.");
       return getMockAnalysis(jdText);
     }
   }
@@ -105,140 +117,213 @@ function getMockAnalysis(text) {
   return new Promise(resolve => {
     setTimeout(() => {
       resolve({
-        companyName: "Deccan AI Experts",
-        roleTitle: "Frontend Developer – HTML/CSS",
-        summary: "A remote, high-impact role focused on evaluating and annotating AI-generated frontend code. You'll review HTML/CSS outputs for correctness, accessibility, and responsiveness while collaborating with cutting-edge AI teams.",
+        companyName: extractCompanyName(text),
+        roleTitle: extractRoleTitle(text),
+        summary: "A role focused on building modern web applications with React and frontend technologies. You'll develop responsive UIs, integrate APIs, and collaborate with cross-functional teams.",
 
-        mustHaveSkills: ["HTML5", "CSS3", "Semantic markup", "Flexbox", "CSS Grid", "Responsive design", "Accessibility standards (WCAG)", "Cross-browser compatibility"],
-        niceToHaveSkills: ["ARIA basics", "Frontend workflows", "Design-to-code translation", "Mobile-first development"],
+        mustHaveSkills: ["JavaScript", "React.js", "HTML5", "CSS3", "REST APIs", "Component-based architecture", "State management", "Responsive design"],
+        niceToHaveSkills: ["Redux", "Context API", "Git", "Webpack/Vite", "TypeScript"],
 
-        matchedSkills: ["HTML5", "CSS3", "Responsive design", "Semantic markup", "Flexbox", "CSS Grid", "Mobile-first development", "Frontend workflows"],
-        missingSkills: ["Accessibility standards (WCAG)", "Cross-browser compatibility", "ARIA basics", "Design-to-code translation"],
+        matchedSkills: ["JavaScript", "React.js", "HTML5", "CSS3", "Component-based architecture", "Responsive design", "Git", "Webpack/Vite"],
+        missingSkills: ["REST APIs", "State management", "Redux", "Context API", "TypeScript"],
 
-        matchScore: 70,
+        matchScore: 72,
         categoryScores: {
-          frontend: 85,
-          backend: 30,
-          tools: 55,
-          projectRelevance: 72
+          frontend: 88,
+          backend: 35,
+          tools: 65,
+          projectRelevance: 78
         },
 
         projectBridgeNotes: [
           {
-            jdRequirement: "Responsive design & mobile-first development",
-            projectFeatureMatch: "FoodSathi Responsive UI",
-            talkingPoint: "Explain how FoodSathi was built mobile-first using Tailwind's responsive breakpoints (sm:, md:, lg:). Mention media queries and how the restaurant listing grid adapts from 1 column on mobile to 3 columns on desktop. Show how you tested on multiple screen sizes."
+            jdRequirement: "Develop and maintain user interfaces using React.js",
+            projectFeatureMatch: "FoodSathi Complete UI",
+            talkingPoint: "Explain how FoodSathi is a full React SPA with multiple pages — restaurant listing, menu detail, cart — all built with reusable React components and React Router for navigation."
           },
           {
-            jdRequirement: "Semantic HTML5 markup",
-            projectFeatureMatch: "FoodSathi Component Structure",
-            talkingPoint: "Discuss how you structured FoodSathi's layout using semantic elements like <header>, <nav>, <main>, <section>, and <footer> instead of generic <div> wrappers. Relate this to better SEO and screen reader support."
+            jdRequirement: "Build reusable components and frontend libraries",
+            projectFeatureMatch: "FoodSathi Component Library",
+            talkingPoint: "Walk through your reusable components: RestaurantCard, MenuCategory, CartItem. Explain how you designed them as pure components that accept props and can be used anywhere."
           },
           {
-            jdRequirement: "Modern CSS layout techniques (Flexbox, Grid)",
-            projectFeatureMatch: "FoodSathi Menu Grid & Cart Layout",
-            talkingPoint: "Walk through how the restaurant menu uses CSS Grid for the item cards and Flexbox for the cart sidebar alignment. Explain the difference: Grid = 2D layouts, Flexbox = 1D alignment."
+            jdRequirement: "Integrate APIs and backend services",
+            projectFeatureMatch: "FoodSathi Live Swiggy API Integration",
+            talkingPoint: "Discuss how FoodSathi fetches live restaurant data from the Swiggy API using fetch/axios, handles loading states, and gracefully manages API errors with try/catch."
           },
           {
-            jdRequirement: "Review AI-generated frontend code for quality",
-            projectFeatureMatch: "Applied.AI Dashboard (This Project!)",
-            talkingPoint: "Mention that you literally built an AI-powered tool (Applied.AI) that generates and processes frontend code analysis. You understand how AI outputs HTML/CSS and have hands-on experience evaluating structured AI responses."
+            jdRequirement: "Optimize applications for speed and performance",
+            projectFeatureMatch: "FoodSathi Performance Optimization",
+            talkingPoint: "Mention React.lazy() for code splitting, useMemo for expensive computations, and how you avoided unnecessary re-renders by structuring state properly."
           },
           {
-            jdRequirement: "Evaluate styling for consistency, spacing, typography",
-            projectFeatureMatch: "FoodSathi Design System",
-            talkingPoint: "Explain how FoodSathi uses CSS custom properties (--primary, --background, etc.) for consistent theming, and how you established a spacing and typography scale using Tailwind's design tokens."
+            jdRequirement: "Debug and resolve frontend issues",
+            projectFeatureMatch: "Applied.AI Error Handling System",
+            talkingPoint: "In Applied.AI, you built a robust error boundary with graceful fallbacks. When AI models fail (429/503 errors), the app automatically retries alternative models instead of crashing."
           },
           {
-            jdRequirement: "Provide detailed feedback on improper semantics & inefficient CSS",
-            projectFeatureMatch: "Applied.AI Prompt Engineering",
-            talkingPoint: "In Applied.AI, you engineered prompts that force AI to return structured, clean outputs. Discuss how you identify bad patterns like div-soup, inline styles, and redundant CSS rules, and how you provide constructive feedback to fix them."
+            jdRequirement: "Follow coding standards and best practices",
+            projectFeatureMatch: "Applied.AI Modular Architecture",
+            talkingPoint: "Discuss your folder structure: components/, pages/, services/, store/, hooks/ — each with a single responsibility. Explain how you separate UI from business logic."
           },
           {
-            jdRequirement: "Assess layouts for accessibility and WCAG compliance",
-            projectFeatureMatch: "FoodSathi Accessible Navigation",
-            talkingPoint: "Talk about how FoodSathi's navigation uses proper focus states, keyboard navigation with tab/enter keys, and contrast-compliant color pairs. Acknowledge WCAG is a growth area and show eagerness to deepen that knowledge."
+            jdRequirement: "State management (Redux or Context API)",
+            projectFeatureMatch: "Applied.AI Zustand Global Store",
+            talkingPoint: "Explain how Applied.AI uses Zustand for global state (analysis results, loading flags). Compare Zustand vs Redux vs Context API — Zustand is lighter with less boilerplate but same concept."
           },
           {
-            jdRequirement: "Help train AI models by reviewing frontend prompts",
-            projectFeatureMatch: "Applied.AI Gemini Integration",
-            talkingPoint: "You have first-hand experience writing system prompts for Google Gemini that generate frontend analysis. You understand how prompt quality directly affects AI output quality — exactly the skill Deccan AI needs."
+            jdRequirement: "Familiarity with modern frontend tools (Webpack, Vite)",
+            projectFeatureMatch: "Applied.AI Vite Setup",
+            talkingPoint: "Both FoodSathi (Parcel) and Applied.AI (Vite) use modern bundlers. Explain why Vite is faster than Webpack — it uses native ES modules in dev and Rollup for production builds."
           }
         ],
 
         interviewQuestions: [
           {
-            question: "What is semantic HTML and why does it matter?",
-            reason: "The JD explicitly requires 'semantic markup evaluation'. This is foundational to the role.",
-            projectExample: "FoodSathi Component Structure",
-            hint: "Semantic HTML uses meaningful tags like <article>, <nav>, <section>, <header> instead of generic <div>s. Benefits: (1) Better for SEO because search engines understand your page structure, (2) Better for accessibility because screen readers can navigate by sections and landmarks, (3) Better for code readability and maintainability. In FoodSathi, you used <nav> for navigation, <main> for content, and <section> for menu categories.",
-            confidence: "High"
-          },
-          {
-            question: "Explain the difference between Flexbox and CSS Grid. When would you use each?",
-            reason: "JD requires 'modern layout techniques (Flexbox, Grid)'. They will test if you understand both.",
-            projectExample: "FoodSathi Menu & Cart Layout",
-            hint: "Flexbox is one-dimensional — it arranges items in a row OR column. Use it for navbars, aligning buttons, centering content vertically or horizontally. CSS Grid is two-dimensional — it controls rows AND columns simultaneously. Use it for full page layouts, card grids, and dashboards. In FoodSathi, the restaurant card grid uses CSS Grid (auto-fit with 3 columns on desktop), while the cart items inside use Flexbox to stack vertically.",
-            confidence: "High"
-          },
-          {
-            question: "How do you ensure a website is accessible to users with disabilities?",
-            reason: "JD specifically lists WCAG and ARIA as required qualifications. This is a core responsibility of the role.",
+            question: "What is React and why do we use it?",
+            reason: "Basic React understanding is the core requirement of this role.",
             projectExample: "FoodSathi & Applied.AI",
-            hint: "Key practices: (1) Use semantic HTML so screen readers understand structure, (2) Add alt text to all images, (3) Ensure sufficient color contrast (WCAG AA requires 4.5:1 ratio for normal text), (4) Make all interactive elements keyboard navigable using tab, enter, and escape keys, (5) Use ARIA labels when HTML semantics aren't enough (e.g., aria-label on icon-only buttons, aria-expanded on accordions). Mention that you're actively learning WCAG 2.1 AA guidelines.",
+            hint: "React is a JavaScript library for building user interfaces using a component-based architecture. It uses a Virtual DOM to efficiently update only the parts of the page that changed, instead of re-rendering the entire page. We use it because it makes building complex, interactive UIs manageable through reusable components. In FoodSathi, each restaurant card is a component that gets reused for every restaurant.",
             confidence: "High"
           },
           {
-            question: "How would you make a layout responsive without using a CSS framework?",
-            reason: "Tests deep CSS knowledge beyond framework dependence — critical for evaluating AI-generated vanilla CSS.",
+            question: "Explain the difference between state and props in React.",
+            reason: "Fundamental React concept — every intern interview asks this.",
+            projectExample: "FoodSathi RestaurantCard",
+            hint: "Props are read-only data passed FROM a parent TO a child component — like function arguments. State is mutable data managed INSIDE a component using useState. When state changes, the component re-renders. In FoodSathi, the RestaurantCard receives restaurant data as props, while the search input manages its search text as local state.",
+            confidence: "High"
+          },
+          {
+            question: "What are React hooks? Name the ones you've used.",
+            reason: "Hooks are essential for modern React — the JD requires component-based architecture knowledge.",
+            projectExample: "Applied.AI Dashboard",
+            hint: "Hooks let you use React features (state, lifecycle, context) in functional components without classes. Common hooks: useState (local state), useEffect (side effects like API calls), useRef (DOM references), useMemo (memoize expensive calculations), useCallback (memoize functions). In Applied.AI, you used useState for form inputs, useMutation from TanStack Query for API calls, and custom hooks like useAnalyzeJob.",
+            confidence: "High"
+          },
+          {
+            question: "How does useEffect work? Give an example.",
+            reason: "useEffect is used constantly for API calls and side effects — critical for this role.",
+            projectExample: "FoodSathi API Fetching",
+            hint: "useEffect runs side effects after render. It takes a callback function and a dependency array. With an empty array [], it runs once on mount (like componentDidMount). With dependencies [searchText], it re-runs whenever searchText changes. Always return a cleanup function for subscriptions/timers. In FoodSathi, useEffect fetches restaurant data on component mount.",
+            confidence: "High"
+          },
+          {
+            question: "What is the Virtual DOM and how does it improve performance?",
+            reason: "Shows deep understanding of why React is fast — differentiator question.",
+            projectExample: "FoodSathi Rendering",
+            hint: "The Virtual DOM is a lightweight JavaScript copy of the real DOM. When state changes, React creates a new Virtual DOM, diffs it against the previous one (reconciliation), and updates ONLY the changed nodes in the real DOM. This is much faster than manipulating the real DOM directly because DOM operations are expensive. React batches multiple updates together for efficiency.",
+            confidence: "High"
+          },
+          {
+            question: "How do you fetch data from an API in React?",
+            reason: "JD requires API integration — they need to know you can connect frontend to backend.",
+            projectExample: "FoodSathi Swiggy API",
+            hint: "Use fetch() or axios inside useEffect with an async function. Always handle loading, success, and error states. Pattern: set loading=true, call await fetch(url), parse JSON, set data, catch errors, set loading=false in finally. In Applied.AI, you use TanStack React Query's useMutation which handles all these states automatically.",
+            confidence: "High"
+          },
+          {
+            question: "What is component-based architecture?",
+            reason: "JD explicitly mentions this as a required qualification.",
+            projectExample: "FoodSathi Structure",
+            hint: "Component-based architecture means breaking the UI into small, self-contained, reusable pieces. Each component handles its own rendering, state, and logic. Components can be composed together like building blocks. Benefits: reusability (use the same Card component everywhere), maintainability (change one component without affecting others), testability (test each piece independently). FoodSathi has 15+ components organized in folders.",
+            confidence: "High"
+          },
+          {
+            question: "Explain the concept of state management. When would you use Redux vs Context API?",
+            reason: "JD lists Redux and Context API as plus skills.",
+            projectExample: "Applied.AI Zustand Store",
+            hint: "State management handles data that needs to be shared across multiple components. Context API is built into React — good for simple global state like themes or auth. Redux is for complex apps with lots of state changes — it uses actions, reducers, and a single store. Zustand (used in Applied.AI) is a modern alternative that's simpler than Redux but more powerful than Context. Use Context for small apps, Redux/Zustand for complex ones.",
+            confidence: "Medium"
+          },
+          {
+            question: "How do you make a React app responsive?",
+            reason: "JD requires building responsive web applications.",
             projectExample: "FoodSathi Responsive UI",
-            hint: "Use media queries: @media (max-width: 768px) { ... } to adjust layouts at breakpoints. Use relative units (rem, em, %, vw/vh) instead of fixed px values. Use max-width on containers instead of fixed width. Use CSS Grid's auto-fit/auto-fill with minmax() for responsive card grids without any media queries. Always include the viewport meta tag: <meta name='viewport' content='width=device-width, initial-scale=1'>. Test on Chrome DevTools device toolbar.",
-            confidence: "Medium"
-          },
-          {
-            question: "What common mistakes do you see in AI-generated HTML/CSS code?",
-            reason: "This IS the job. They want to know you can identify and fix AI code quality issues.",
-            projectExample: "Applied.AI (This Project)",
-            hint: "Common AI mistakes: (1) Overuse of <div> instead of semantic tags like <section>, <article>, <nav>, (2) Inline styles everywhere instead of class-based modular CSS, (3) Missing alt attributes on <img> tags, (4) Non-responsive fixed-width layouts using px everywhere, (5) Redundant/duplicate CSS rules, (6) Incorrect heading hierarchy — skipping from h1 to h4, (7) Poor color contrast ratios that fail WCAG. You can confidently discuss this because you built Applied.AI to analyze and improve AI outputs.",
+            hint: "Use CSS media queries, Flexbox, and CSS Grid for responsive layouts. Use relative units (rem, %, vw) instead of fixed px. FoodSathi uses Tailwind's responsive breakpoints (sm:, md:, lg:) which generate media queries under the hood. Test on Chrome DevTools device toolbar. Use CSS Grid's auto-fit with minmax() for card grids that automatically adjust columns based on screen width.",
             confidence: "High"
           },
           {
-            question: "What is the CSS box model? Explain each layer.",
-            reason: "Fundamental CSS concept. Every frontend role tests this as a baseline knowledge check.",
-            projectExample: "FoodSathi Card Components",
-            hint: "The box model has 4 layers from inside out: (1) Content — the actual text/image, (2) Padding — space between content and border, (3) Border — the visible edge of the element, (4) Margin — space between this element and neighboring elements. By default, width/height only affect the content area. Use box-sizing: border-box to make width/height include padding and border, which is industry standard. In FoodSathi, every card uses border-box sizing with consistent padding.",
+            question: "What is Git and how do you use it in your projects?",
+            reason: "JD lists Git as a preferred skill.",
+            projectExample: "Applied.AI GitHub Repo",
+            hint: "Git is a version control system that tracks code changes. Key commands: git init (start repo), git add . (stage changes), git commit -m 'message' (save changes), git push origin main (upload to GitHub), git pull (download latest). Branching lets you work on features without breaking main code. Both FoodSathi and Applied.AI are pushed to GitHub with meaningful commit messages for each development day.",
             confidence: "High"
-          },
-          {
-            question: "What is the difference between display: none and visibility: hidden?",
-            reason: "Common CSS gotcha question that tests attention to detail — exactly the skill needed for code review.",
-            projectExample: "FoodSathi Mobile Menu",
-            hint: "display: none completely removes the element from the document flow — it takes up zero space and screen readers skip it. visibility: hidden makes the element invisible but it still occupies space in the layout. A third option is opacity: 0, which also keeps the space but the element can still be clicked/interacted with. For accessible hiding, use a .sr-only class with position: absolute and clip instead.",
-            confidence: "High"
-          },
-          {
-            question: "How do you approach cross-browser compatibility testing?",
-            reason: "JD lists 'cross-browser compatibility' as a must-have skill.",
-            projectExample: "FoodSathi UI Testing",
-            hint: "Test on Chrome, Firefox, Safari, and Edge at minimum. Use Can I Use (caniuse.com) to check CSS property support before using new features. Add vendor prefixes (-webkit-, -moz-) where needed, or use autoprefixer in build tools. Avoid relying on very new CSS features without fallbacks. Use CSS reset/normalize to ensure consistent base styles across browsers. Test on both Mac and Windows since Safari rendering differs.",
-            confidence: "Medium"
-          },
-          {
-            question: "Explain CSS specificity and how conflicts are resolved.",
-            reason: "Essential for reviewing and debugging CSS — directly relevant to evaluating AI-generated stylesheets.",
-            projectExample: "FoodSathi Styling Architecture",
-            hint: "CSS specificity determines which rule wins when multiple rules target the same element. Specificity ranking (lowest to highest): (1) Element selectors like div, p = 0,0,1, (2) Class selectors like .card = 0,1,0, (3) ID selectors like #header = 1,0,0, (4) Inline styles = highest, (5) !important overrides everything. When two rules have equal specificity, the last one in the stylesheet wins. Best practice: avoid IDs and !important, use class-based BEM methodology for predictable specificity.",
-            confidence: "High"
-          },
-          {
-            question: "What are ARIA attributes and when should you use them?",
-            reason: "JD lists 'ARIA basics' as a nice-to-have. Showing knowledge here will set you apart from other candidates.",
-            projectExample: "Applied.AI Interactive Components",
-            hint: "ARIA (Accessible Rich Internet Applications) attributes add meaning to HTML elements for assistive technologies. Common examples: aria-label provides a text label for icon-only buttons, aria-expanded tells screen readers if an accordion is open/closed, aria-hidden='true' hides decorative elements from screen readers, role='button' on non-button elements that act as buttons. The first rule of ARIA: don't use ARIA if a native HTML element already provides the semantics (use <button> instead of <div role='button'>).",
-            confidence: "Medium"
           }
         ]
       });
     }, 2500);
   });
 }
+
+// Simple text parser to extract company name from JD
+function extractCompanyName(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const match = line.match(/company\s*:\s*(.+)/i);
+    if (match) return match[1].trim();
+  }
+  for (const line of lines) {
+    const match = line.match(/about\s+(.+?)[\s:]/i);
+    if (match && match[1].length < 40) return match[1].trim();
+  }
+  for (const line of lines.slice(0, 5)) {
+    if (line.length > 3 && line.length < 50 && !line.includes(':') && !line.toLowerCase().includes('role')) {
+      return line;
+    }
+  }
+  return "Unknown Company";
+}
+
+// Simple text parser to extract role title from JD
+function extractRoleTitle(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines[0] && lines[0].length < 60) return lines[0];
+  for (const line of lines) {
+    const match = line.match(/(role|position|title)\s*:\s*(.+)/i);
+    if (match) return match[2].trim();
+  }
+  return "Frontend Developer";
+}
+
+export const analyzeRepoContent = async (repoData) => {
+  if (!groq) return null;
+
+  const prompt = `
+    You are a technical project analyst. I am providing you with info about a GitHub repository.
+    Your goal is to extract technical details and structure them for my professional portfolio.
+
+    REPO INFO:
+    Name: ${repoData.name}
+    Description: ${repoData.description}
+    Main Language: ${repoData.language}
+    Topics: ${repoData.topics?.join(', ')}
+
+    README CONTENT:
+    ${repoData.readme}
+
+    EXTRACT THE FOLLOWING INTO A JSON OBJECT (No markdown, no extra text):
+    {
+      "name": "${repoData.name}",
+      "type": "Short description of the app type (e.g. Full-Stack E-commerce, AI SaaS)",
+      "stack": "Comma separated list of core technologies used (React, Tailwind, Node, etc)",
+      "keyFeatures": "Comma separated list of 3-4 top technical features",
+      "challengesSolved": "Comma separated list of 2-3 technical challenges this project likely solved or addressed"
+    }
+  `;
+
+  try {
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: MODELS_TO_TRY[0],
+      temperature: 0.2,
+    });
+
+    const content = chatCompletion.choices[0]?.message?.content || '';
+    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error("Repo Analysis Error:", error);
+    return null;
+  }
+};
+
