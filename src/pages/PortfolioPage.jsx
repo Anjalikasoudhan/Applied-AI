@@ -5,7 +5,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { fetchProjects, saveProject, deleteProject } from '../services/portfolioService';
 import { useAuthStore } from '../store/useAuthStore';
 import { fetchRepoData } from '../services/githubService';
-import { analyzeRepoContent } from '../services/geminiService';
+import { analyzeRepoContent } from '../services/groqService';
 
 const PortfolioPage = () => {
   const { projects, addProject, removeProject, setProjects, loading, setLoading } = useProjectStore();

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { analyzeJobDescription } from '../services/geminiService';
+import { analyzeJobDescription } from '../services/groqService';
 import { useJobAnalysisStore } from '../store/useJobAnalysisStore';
 import { saveAnalysis } from '../services/historyService';
 
