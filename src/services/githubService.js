@@ -19,15 +19,20 @@ export const fetchRepoData = async (url) => {
     if (!repoRes.ok) throw new Error("Repository not found or private");
     const repoInfo = await repoRes.json();
 
-    // 3. Try to fetch README from common branch names
+    // 3. Try to fetch README and package.json from common branch names
     const branches = ['main', 'master', 'develop'];
     let readmeText = '';
+    let packageJson = '';
     
     for (const branch of branches) {
-      const readmeRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`);
-      if (readmeRes.ok) {
-        readmeText = await readmeRes.text();
-        break;
+      if (!readmeText) {
+        const readmeRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`);
+        if (readmeRes.ok) readmeText = await readmeRes.text();
+      }
+      
+      if (!packageJson) {
+        const pkgRes = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/package.json`);
+        if (pkgRes.ok) packageJson = await pkgRes.text();
       }
     }
 
@@ -36,8 +41,10 @@ export const fetchRepoData = async (url) => {
       description: repoInfo.description || '',
       language: repoInfo.language || '',
       topics: repoInfo.topics || [],
-      readme: readmeText.substring(0, 5000), // Cap for AI context
+      readme: readmeText.substring(0, 5000), 
+      packageJson: packageJson, // Pass the dependencies to the AI
     };
+
   } catch (error) {
     console.error("GitHub Fetch Error:", error);
     throw error;

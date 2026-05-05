@@ -5,55 +5,41 @@ const apiKey = import.meta.env.VITE_GROQ_API_KEY;
 const groq = apiKey ? new Groq({ apiKey, dangerouslyAllowBrowser: true }) : null;
 
 const SYSTEM_PROMPT = `
-You are an expert technical recruiter and senior engineering manager.
-Given a Job Description (JD) and a Candidate's Project Context (a list of multiple projects), your goal is to analyze the JD and match it against the candidate's existing projects.
+You are an expert technical recruiter. You are evaluating a candidate for a specific JD based on their portfolio.
 
-CRITICAL SKILL-MATCHING RULE:
-- Before placing a skill in "missingSkills", you MUST check the 'stack', 'keyFeatures', and 'type' of EVERY project provided.
-- If "React" or "React.js" appears in ANY project's stack, it MUST be moved to "matchedSkills". 
-- Do NOT ignore projects. Even a small mention of a technology in one project counts as a "Matched Skill".
+CRITICAL TECHNICAL DICTIONARY (MANDATORY MATCHES):
+- If the JD says "Redux" and the project has "Redux Toolkit" -> This is a 100% MATCH.
+- If the JD says "State Management" and the project has "Redux", "Redux Toolkit", "Zustand", "Context API", or "Recoil" -> This is a 100% MATCH.
+- If the JD says "REST APIs" or "API Integration" and the project has "Supabase", "Firebase", "Axios", "Fetch", or ANY item ending in "API" (e.g. Swiggy API) -> This is a 100% MATCH.
+- If the JD says "Build Tools" or "Bundlers" and the project has "Vite", "Webpack", or "Parcel" -> This is a 100% MATCH.
 
-INTERVIEW QUESTION RULES:
-- SCALE THE QUESTIONS: Generate at least 5 questions PER PROJECT in the context.
-- If the user has 3 projects, you MUST generate at least 15 high-quality interview questions.
-- Ensure the questions are evenly distributed (e.g. 5 for Project A, 5 for Project B, 5 for Project C).
-- Each hint must be a DETAILED 3-4 sentence technical answer guide.
+RULES:
+- Scan ALL projects. If a technology is mentioned in any project's stack, use the dictionary above to find its parent category in the JD.
+- NEVER mark "State Management" as missing if the user has Redux or Zustland.
+- NEVER mark "Redux" as missing if the user has Redux Toolkit.
+- Be extremely thorough. Every word in the project tech stack is a clue.
 
-EXTRACT THE INFORMATION INTO THE FOLLOWING STRICT JSON STRUCTURE:
+INTERVIEW QUESTIONS:
+- Scale to 5-6 questions per project (18 total for 3 projects).
+- Ensure questions for the "Food Ordering" app specifically ask about the implementation of Redux Toolkit.
+
+OUTPUT JSON STRUCTURE:
 {
-  "companyName": "string or null",
+  "companyName": "string",
   "roleTitle": "string",
-  "summary": "Short 2 sentence summary of the role",
+  "summary": "2 sentence summary",
   "mustHaveSkills": ["skill1", "skill2"],
   "niceToHaveSkills": ["skill1", "skill2"],
-  "matchedSkills": ["Every skill from JD that appears in ANY candidate project"],
-  "missingSkills": ["Skills from JD that appear in ZERO candidate projects"],
-  "matchScore": number (0 to 100),
-  "categoryScores": {
-    "frontend": number (0-100),
-    "backend": number (0-100),
-    "tools": number (0-100),
-    "projectRelevance": number (0-100)
-  },
-  "projectBridgeNotes": [
-    {
-      "jdRequirement": "JD Skill Name",
-      "projectFeatureMatch": "ProjectName: SpecificFeature",
-      "talkingPoint": "How this specific project feature proves you have this JD skill."
-    }
-  ],
-  "interviewQuestions": [
-    {
-      "question": "string",
-      "reason": "Direct reference to JD requirement and [Specific Project Name]",
-      "projectExample": "Project Name",
-      "hint": "Technical guide on how to answer using this project as proof.",
-      "confidence": "High"
-    }
-  ]
+  "matchedSkills": ["Skills found in portfolio using the dictionary"],
+  "missingSkills": ["Skills NOT found in ANY property of ANY project after scanning dictionary"],
+  "matchScore": number,
+  "categoryScores": { "frontend": 0-100, "backend": 0-100, "tools": 0-100, "projectRelevance": 0-100 },
+  "projectBridgeNotes": [{ "jdRequirement": "string", "projectFeatureMatch": "string", "talkingPoint": "string" }],
+  "interviewQuestions": [{ "question": "string", "reason": "string", "projectExample": "string", "hint": "string", "confidence": "High" }]
 }
-Ensure output is strictly valid JSON.
 `;
+
+
 
 
 
@@ -298,10 +284,14 @@ export const analyzeRepoContent = async (repoData) => {
     Main Language: ${repoData.language}
     Topics: ${repoData.topics?.join(', ')}
 
+    PACKAGE.JSON (Dependency list):
+    ${repoData.packageJson || 'N/A'}
+
     README CONTENT:
     ${repoData.readme}
 
-    EXTRACT THE FOLLOWING INTO A JSON OBJECT (No markdown, no extra text):
+    STRICT JSON OUTPUT ONLY (No conversational text):
+    - Scan the PACKAGE.JSON list above to find libraries (Tailwind, Supabase, etc).
     {
       "name": "${repoData.name}",
       "type": "Short description of the app type (e.g. Full-Stack E-commerce, AI SaaS)",
@@ -319,11 +309,16 @@ export const analyzeRepoContent = async (repoData) => {
     });
 
     const content = chatCompletion.choices[0]?.message?.content || '';
-    const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleaned);
+    
+    // Improved extraction: Find the first { and the last }
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No valid JSON found in AI response");
+    
+    return JSON.parse(jsonMatch[0]);
   } catch (error) {
     console.error("Repo Analysis Error:", error);
     return null;
   }
 };
+
 
