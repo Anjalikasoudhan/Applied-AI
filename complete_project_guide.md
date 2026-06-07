@@ -425,3 +425,66 @@ When you click "History" in the Navbar, the page doesn't reload. React Router in
 
 **Q: Why not just use Context API instead of Zustand?**
 > Context API re-renders EVERY component that consumes the context whenever ANY value in it changes. If I update `isAnalyzing`, every component reading `currentAnalysis` also re-renders unnecessarily. Zustand uses selectors to only re-render components that care about the specific value that changed.
+
+---
+
+## PART 7: Advanced Features & Recent Updates (Days 5-7)
+
+### 1. Migrating to Groq API (Llama-3)
+**What we changed:** We swapped Google Gemini for Groq API (using the Llama-3 model).
+**Why:** Groq uses LPUs (Language Processing Units) which are significantly faster than traditional GPUs for AI inference. This means the job analysis generates almost instantly. We also avoided rate limit quota errors we were hitting with Gemini.
+**Interview Q:** "Why did you switch from Gemini to Groq?"
+> "I needed lower latency for a better user experience. Groq's LPU architecture delivers text significantly faster than standard APIs. It allowed the UI to feel snappy and responsive rather than making the user wait 10+ seconds for a complex analysis."
+
+### 2. Recharts Analytics & Visualizations
+**What we added:** A visual dashboard using `Recharts` to show category scores (Frontend, Backend, Tools) and a visual overall match score.
+**Interview Q:** "Why Recharts?"
+> "It's built specifically for React, highly customizable, and declarative. I used it to break down the user's match score visually rather than just showing a raw number, making the data much more digestible for the user."
+
+### 3. Supabase Integration (Persistent Storage)
+**What we added:** We moved from saving data in `localStorage` to a real Supabase backend.
+**Why:** LocalStorage is tied to one specific browser. If the user opens the app on their phone, their projects disappear. Supabase gives us a real PostgreSQL database with Row-Level Security (RLS) so data is persistent across all devices securely.
+**Interview Q:** "How do you handle data persistence?"
+> "I integrated Supabase. Instead of volatile local storage, user projects and analysis history are saved to a PostgreSQL database via REST API. I use the Supabase JS client to perform CRUD operations seamlessly."
+
+### 4. AI-Powered GitHub Project Import
+**What we added:** Instead of typing out projects manually, users can paste a GitHub URL. `githubService.js` fetches the repository data automatically using the GitHub API.
+**How it works:** It fetches BOTH the `README.md` and the `package.json` file. It then sends this raw text to the Groq AI, which intelligently reads the `package.json` dependencies (like "tailwindcss", "redux", "supabase") to extract the exact tech stack accurately.
+**Interview Q:** "How does your GitHub importer work?"
+> "It uses the GitHub REST API to fetch the repo's README and `package.json`. Then, I pass that raw text to the Groq LLM with a strict JSON extraction prompt. The AI acts as a smart parser, reading the `package.json` dependencies to accurately map out the exact tech stack without any manual entry from the user."
+
+### 5. Advanced AI Skill Dictionary Matching
+**What we added:** We updated the AI prompt with a strict "Technical Dictionary" logic. 
+**Why:** Previously, if a Job Description asked for "State Management" but the user had "Zustand" in their project, the AI would say the user is missing the skill. Now, the prompt explicitly maps `Zustand/Redux -> State Management`, and `Vite/Webpack -> Build Tools`.
+**Interview Q:** "How do you ensure accurate skill matching?"
+> "I engineered the AI prompt to include a strict Technical Dictionary. It maps specific libraries (like Tailwind) to broader JD requirements (like UI Frameworks). I also provide the `package.json` dependencies to the AI to ensure no underlying skill is falsely marked as missing."
+
+### 6. Vercel SPA Routing Fix (`vercel.json`)
+**What we added:** A `vercel.json` configuration file.
+**Why:** React uses Client-Side Routing. If you deploy to Vercel and navigate to `/history` and refresh the page, Vercel looks for a physical `history.html` file on the server and throws a 404 error. The `vercel.json` rewrites ALL traffic to `index.html` so React Router can take over.
+**Interview Q:** "How do you handle routing in production on Vercel?"
+> "Since it's a Single Page Application (SPA), there is only one physical HTML file (`index.html`). I added a `vercel.json` rewrite rule to route all server requests to `index.html`. From there, React Router intercepts the URL and renders the correct component dynamically."
+
+---
+
+## PART 8: Behavioral & Scaling Questions (The "Soft Skills" Test)
+
+Interviewers ask these questions to see how you think like an engineer, how you handle frustration, and how you plan for the future.
+
+### 1. "What was the hardest bug you faced while building Applied.AI, and how did you fix it?"
+> **Your Answer:** "The hardest bug was dealing with the AI's JSON output. Initially, the app would crash randomly because the AI would occasionally wrap its JSON response in markdown blocks (like \`\`\`json ... \`\`\`), which broke `JSON.parse()`. 
+> 
+> **The Fix:** I fixed this by implementing defensive programming. Instead of just passing the raw response to `JSON.parse()`, I wrote a Regex matcher (`content.match(/\\{[\\s\\S]*\\}/)`) to extract exactly the object between the curly braces, ignoring any conversational text or markdown the AI generated. This made the application 100% crash-proof against unpredictable LLM responses."
+
+### 2. "If this app suddenly got 10,000 users tomorrow, what would break first?"
+> **Your Answer:** "The first thing to break would be the Groq API rate limits. Currently, the frontend makes a direct call to the API every time a user clicks analyze. 
+> 
+> **The Fix:** To scale this for 10,000 users, I would implement two things:
+> 1. **A Caching Layer:** I would hash the Job Description text. If a second user pastes the exact same JD, I would pull the analysis from Supabase instead of calling the AI again, saving API tokens.
+> 2. **A Queue System:** I would move the AI call to a serverless backend. If too many users request an analysis at once, the requests would enter a queue to prevent rate-limit crashes, and the UI would show a 'You are in line...' loading state."
+
+### 3. "If you had another month to work on this, what feature would you add next?"
+> **Your Answer:** "I would add an automated **Resume Tailoring feature**. Right now, the app tells you what skills you are missing based on the JD. The logical next step is to have the AI generate a customized PDF version of your resume that automatically highlights the specific projects and skills that match the JD, drastically increasing your chances of passing ATS (Applicant Tracking Systems)."
+
+### 4. "Why did you use Zustand instead of Redux?" (Common Architectural Question)
+> **Your Answer:** "I evaluated Redux, but for this project's scope, it was overkill. Redux requires writing action types, action creators, reducers, and setting up a Provider wrapper. Zustand allowed me to create a global store with just a single hook (`create()`), in about 10 lines of code. It uses selectors under the hood, which prevents unnecessary re-renders just like Redux does, but with a fraction of the boilerplate. It kept the codebase much cleaner and easier to maintain."

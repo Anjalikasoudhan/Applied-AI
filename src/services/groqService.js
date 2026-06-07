@@ -100,25 +100,148 @@ export const analyzeJobDescription = async (jdText) => {
 
 // Rich demo fallback data
 function getMockAnalysis(text) {
+  const candidateContext = getProjectContext();
+  
+  const mustHaveSkills = ["JavaScript", "React.js", "HTML5", "CSS3", "REST APIs", "Component-based architecture", "State management", "Responsive design"];
+  const niceToHaveSkills = ["Redux", "Context API", "Git", "Webpack/Vite", "TypeScript"];
+
+  // Gather all words and phrases from candidate's projects to match against
+  const userKeywords = new Set();
+  if (candidateContext && candidateContext.projects) {
+    candidateContext.projects.forEach(p => {
+      // Add stack items
+      if (Array.isArray(p.stack)) {
+        p.stack.forEach(s => userKeywords.add(s.toLowerCase().trim()));
+      }
+      // Add key features and challenges solved
+      if (Array.isArray(p.keyFeatures)) {
+        p.keyFeatures.forEach(f => userKeywords.add(f.toLowerCase().trim()));
+      }
+      if (Array.isArray(p.challengesSolved)) {
+        p.challengesSolved.forEach(c => userKeywords.add(c.toLowerCase().trim()));
+      }
+      // Add name, type
+      if (p.name) {
+        userKeywords.add(p.name.toLowerCase().trim());
+        p.name.toLowerCase().split(/\s+/).forEach(w => userKeywords.add(w));
+      }
+      if (p.type) {
+        userKeywords.add(p.type.toLowerCase().trim());
+        p.type.toLowerCase().split(/\s+/).forEach(w => userKeywords.add(w));
+      }
+    });
+  }
+
+  // Helper check function
+  const isSkillMatched = (skill) => {
+    const sLower = skill.toLowerCase().trim();
+    
+    // Check direct matching or sub-word matching
+    if (userKeywords.has(sLower)) return true;
+    for (const kw of userKeywords) {
+      if (kw.includes(sLower) || sLower.includes(kw)) return true;
+    }
+
+    // Custom dictionary rules:
+    if (sLower === 'redux') {
+      return Array.from(userKeywords).some(kw => 
+        kw.includes('redux') || kw.includes('rtk') || kw.includes('toolkit')
+      );
+    }
+    
+    if (sLower === 'state management') {
+      return Array.from(userKeywords).some(kw => 
+        kw.includes('state') || kw.includes('redux') || kw.includes('zustand') || 
+        kw.includes('context') || kw.includes('recoil') || kw.includes('store')
+      );
+    }
+    
+    if (sLower === 'rest apis' || sLower === 'api integration') {
+      return Array.from(userKeywords).some(kw => 
+        kw.includes('api') || kw.includes('apis') || kw.includes('supabase') || 
+        kw.includes('firebase') || kw.includes('axios') || kw.includes('fetch') || 
+        kw.includes('rest') || kw.includes('http')
+      );
+    }
+    
+    if (sLower === 'webpack/vite' || sLower === 'build tools') {
+      return Array.from(userKeywords).some(kw => 
+        kw.includes('vite') || kw.includes('webpack') || kw.includes('parcel') || kw.includes('bundler')
+      );
+    }
+
+    if (sLower === 'javascript') {
+      return Array.from(userKeywords).some(kw => kw === 'javascript' || kw === 'js' || kw.includes('react'));
+    }
+
+    if (sLower === 'html5') {
+      return Array.from(userKeywords).some(kw => kw.includes('html'));
+    }
+
+    if (sLower === 'css3') {
+      return Array.from(userKeywords).some(kw => kw.includes('css') || kw.includes('tailwind') || kw.includes('sass'));
+    }
+
+    if (sLower === 'typescript') {
+      return Array.from(userKeywords).some(kw => kw.includes('typescript') || kw === 'ts');
+    }
+
+    if (sLower === 'git') {
+      return Array.from(userKeywords).some(kw => kw.includes('git') || kw.includes('github'));
+    }
+
+    return false;
+  };
+
+  const matchedSkills = [];
+  const missingSkills = [];
+
+  mustHaveSkills.forEach(s => {
+    if (isSkillMatched(s)) matchedSkills.push(s);
+    else missingSkills.push(s);
+  });
+
+  niceToHaveSkills.forEach(s => {
+    if (isSkillMatched(s)) matchedSkills.push(s);
+    else missingSkills.push(s);
+  });
+
+  // Calculate dynamic match score
+  const totalWeight = (mustHaveSkills.length * 1.5) + (niceToHaveSkills.length * 0.7);
+  const matchedMustHaves = matchedSkills.filter(s => mustHaveSkills.includes(s)).length;
+  const matchedNiceToHaves = matchedSkills.filter(s => niceToHaveSkills.includes(s)).length;
+  const matchScore = Math.min(100, Math.round(((matchedMustHaves * 1.5 + matchedNiceToHaves * 0.7) / totalWeight) * 100));
+
+  // Category scores
+  const frontendMatched = matchedSkills.filter(s => ["JavaScript", "React.js", "HTML5", "CSS3", "Component-based architecture", "Responsive design"].includes(s)).length;
+  const frontendScore = Math.round((frontendMatched / 6) * 100);
+  
+  const toolsMatched = matchedSkills.filter(s => ["Git", "Webpack/Vite"].includes(s)).length;
+  const toolsScore = Math.round((toolsMatched / 2) * 100);
+
+  let backendScore = 35;
+  const hasBackend = candidateContext?.projects?.some(p => {
+    const stackStr = (Array.isArray(p.stack) ? p.stack.join(' ') : (p.stack || '')).toLowerCase();
+    return stackStr.includes('supabase') || stackStr.includes('firebase') || stackStr.includes('node') || stackStr.includes('express') || stackStr.includes('database') || stackStr.includes('mongodb') || stackStr.includes('api');
+  });
+  if (hasBackend) backendScore = 80;
+
   return new Promise(resolve => {
     setTimeout(() => {
       resolve({
         companyName: extractCompanyName(text),
         roleTitle: extractRoleTitle(text),
         summary: "A role focused on building modern web applications with React and frontend technologies. You'll develop responsive UIs, integrate APIs, and collaborate with cross-functional teams.",
-
-        mustHaveSkills: ["JavaScript", "React.js", "HTML5", "CSS3", "REST APIs", "Component-based architecture", "State management", "Responsive design"],
-        niceToHaveSkills: ["Redux", "Context API", "Git", "Webpack/Vite", "TypeScript"],
-
-        matchedSkills: ["JavaScript", "React.js", "HTML5", "CSS3", "Component-based architecture", "Responsive design", "Git", "Webpack/Vite"],
-        missingSkills: ["REST APIs", "State management", "Redux", "Context API", "TypeScript"],
-
-        matchScore: 72,
+        mustHaveSkills,
+        niceToHaveSkills,
+        matchedSkills,
+        missingSkills,
+        matchScore,
         categoryScores: {
-          frontend: 88,
-          backend: 35,
-          tools: 65,
-          projectRelevance: 78
+          frontend: frontendScore,
+          backend: backendScore,
+          tools: toolsScore,
+          projectRelevance: Math.min(100, Math.round(matchScore * 1.1))
         },
 
         projectBridgeNotes: [

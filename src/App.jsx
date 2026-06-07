@@ -7,12 +7,35 @@ import PortfolioPage from './pages/PortfolioPage'
 import HistoryPage from './pages/HistoryPage'
 import AuthPage from './pages/AuthPage'
 import { useAuthStore } from './store/useAuthStore'
+import { useProjectStore } from './store/useProjectStore'
+import { fetchProjects } from './services/portfolioService'
+
 function App() {
-  const { initializeAuth, loading } = useAuthStore();
+  const { initializeAuth, loading, user } = useAuthStore();
+  const { setProjects } = useProjectStore();
 
   React.useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  React.useEffect(() => {
+    const loadProjects = async () => {
+      if (!user) return;
+      try {
+        const data = await fetchProjects();
+        const mappedData = data.map(p => ({
+          ...p,
+          githubUrl: p.github_url,
+          keyFeatures: p.key_features,
+          challengesSolved: p.challenges_solved
+        }));
+        setProjects(mappedData);
+      } catch (err) {
+        console.error("Failed to preload projects:", err);
+      }
+    };
+    loadProjects();
+  }, [user, setProjects]);
 
   if (loading) {
     return (

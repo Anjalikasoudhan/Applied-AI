@@ -15,10 +15,10 @@ export const getProjectContext = () => {
         name: p.name,
         type: p.type,
         githubUrl: p.githubUrl || 'N/A',
-        // Optional formatting, since we changed them to simple strings for easy inputs:
-        stack: p.stack.split(',').map(s => s.trim()),
-        keyFeatures: p.keyFeatures.split(',').map(s => s.trim()),
-        challengesSolved: p.challengesSolved.split(',').map(s => s.trim())
+        // Safe formatting in case any fields are missing or already arrays
+        stack: p.stack ? (typeof p.stack === 'string' ? p.stack.split(',').map(s => s.trim()) : p.stack) : [],
+        keyFeatures: p.keyFeatures ? (typeof p.keyFeatures === 'string' ? p.keyFeatures.split(',').map(s => s.trim()) : p.keyFeatures) : [],
+        challengesSolved: p.challengesSolved ? (typeof p.challengesSolved === 'string' ? p.challengesSolved.split(',').map(s => s.trim()) : p.challengesSolved) : []
       }))
     };
 

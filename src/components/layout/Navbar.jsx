@@ -5,11 +5,14 @@ import { useAuthStore } from '../../store/useAuthStore';
 const Navbar = () => {
   const { user, signOut } = useAuthStore();
   const navigate = useNavigate();
+  const [imgError, setImgError] = React.useState(false);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
+
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -30,8 +33,14 @@ const Navbar = () => {
             {user ? (
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex items-center text-sm px-3 py-1 rounded-full bg-secondary text-secondary-foreground font-medium tracking-wide border border-border shadow-sm gap-2">
-                  {user.user_metadata?.avatar_url ? (
-                    <img src={user.user_metadata.avatar_url} alt="Profile" className="w-5 h-5 rounded-full" />
+                  {avatarUrl && !imgError ? (
+                    <img 
+                      src={avatarUrl} 
+                      alt="Profile" 
+                      className="w-5 h-5 rounded-full object-cover" 
+                      referrerPolicy="no-referrer"
+                      onError={() => setImgError(true)}
+                    />
                   ) : (
                     <UserCircle className="w-4 h-4 text-muted-foreground" />
                   )}
