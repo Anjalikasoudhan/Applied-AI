@@ -12,11 +12,17 @@ CRITICAL TECHNICAL DICTIONARY (MANDATORY MATCHES):
 - If the JD says "State Management" and the project has "Redux", "Redux Toolkit", "Zustand", "Context API", or "Recoil" -> This is a 100% MATCH.
 - If the JD says "REST APIs" or "API Integration" and the project has "Supabase", "Firebase", "Axios", "Fetch", or ANY item ending in "API" (e.g. Swiggy API) -> This is a 100% MATCH.
 - If the JD says "Build Tools" or "Bundlers" and the project has "Vite", "Webpack", or "Parcel" -> This is a 100% MATCH.
+- If the JD says "Git" or "Version Control", and the candidate has a "githubUrl" that is not "N/A" (or mentions Git/GitHub) -> This is a 100% MATCH.
+- If the JD says "Component-based architecture" (or similar), and the candidate has any project built with React or React Native -> This is a 100% MATCH (inherent to React).
+- If the JD says "Context API", and the candidate has any project with global state management (Zustand, Redux, Redux Toolkit) or React -> This is a 100% MATCH.
 
 RULES:
 - Scan ALL projects. If a technology is mentioned in any project's stack, use the dictionary above to find its parent category in the JD.
-- NEVER mark "State Management" as missing if the user has Redux or Zustland.
+- NEVER mark "State Management" or "Context API" as missing if the user has Redux or Zustand.
 - NEVER mark "Redux" as missing if the user has Redux Toolkit.
+- NEVER mark "Component-based architecture" as missing if the user has React projects.
+- NEVER mark "Git" as missing if the user has GitHub URLs for their projects.
+- ALWAYS identify "React Native" or "Mobile Development" as a Must-Have skill if the JD mandates React Native. If the candidate's projects do not explicitly list React Native, you MUST list it under missingSkills (since the candidate does not have React Native on their resume).
 - Be extremely thorough. Every word in the project tech stack is a clue.
 
 INTERVIEW QUESTIONS:
@@ -80,8 +86,9 @@ export const analyzeJobDescription = async (jdText) => {
       const responseText = chatCompletion.choices[0]?.message?.content || '';
 
       try {
-        const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(cleaned);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No valid JSON found in AI response");
+        return JSON.parse(jsonMatch[0]);
       } catch (e) {
         console.error("Failed to parse Groq JSON:", e, responseText);
         throw new Error("AI returned malformed JSON");
@@ -102,8 +109,8 @@ export const analyzeJobDescription = async (jdText) => {
 function getMockAnalysis(text) {
   const candidateContext = getProjectContext();
   
-  const mustHaveSkills = ["JavaScript", "React.js", "HTML5", "CSS3", "REST APIs", "Component-based architecture", "State management", "Responsive design"];
-  const niceToHaveSkills = ["Redux", "Context API", "Git", "Webpack/Vite", "TypeScript"];
+  const mustHaveSkills = ["JavaScript", "React.js", "HTML5", "CSS3", "REST APIs", "Component-based architecture", "State management", "Responsive design", "React Native"];
+  const niceToHaveSkills = ["Redux", "Context API", "Git", "Webpack/Vite", "TypeScript", "Docker", "Linux", "CI/CD"];
 
   // Gather all words and phrases from candidate's projects to match against
   const userKeywords = new Set();
@@ -129,6 +136,11 @@ function getMockAnalysis(text) {
         userKeywords.add(p.type.toLowerCase().trim());
         p.type.toLowerCase().split(/\s+/).forEach(w => userKeywords.add(w));
       }
+      // Scan githubUrl for version control match
+      if (p.githubUrl && p.githubUrl !== 'N/A') {
+        userKeywords.add("git");
+        userKeywords.add("github");
+      }
     });
   }
 
@@ -153,6 +165,20 @@ function getMockAnalysis(text) {
       return Array.from(userKeywords).some(kw => 
         kw.includes('state') || kw.includes('redux') || kw.includes('zustand') || 
         kw.includes('context') || kw.includes('recoil') || kw.includes('store')
+      );
+    }
+
+    if (sLower === 'component-based architecture') {
+      // Inherently true if using React/React Native or component-based UI libraries
+      return Array.from(userKeywords).some(kw => 
+        kw.includes('react') || kw.includes('component') || kw.includes('zustand') || kw.includes('redux')
+      );
+    }
+
+    if (sLower === 'context api') {
+      // Inherently true if they have global state management like Zustand or Redux, or general React
+      return Array.from(userKeywords).some(kw => 
+        kw.includes('context') || kw.includes('redux') || kw.includes('zustand') || kw.includes('state')
       );
     }
     
@@ -190,6 +216,22 @@ function getMockAnalysis(text) {
       return Array.from(userKeywords).some(kw => kw.includes('git') || kw.includes('github'));
     }
 
+    if (sLower === 'react native') {
+      return Array.from(userKeywords).some(kw => kw.includes('react native') || kw === 'native');
+    }
+
+    if (sLower === 'docker') {
+      return Array.from(userKeywords).some(kw => kw.includes('docker') || kw.includes('container'));
+    }
+
+    if (sLower === 'linux') {
+      return Array.from(userKeywords).some(kw => kw.includes('linux'));
+    }
+
+    if (sLower === 'ci/cd') {
+      return Array.from(userKeywords).some(kw => kw.includes('ci/cd') || kw.includes('github actions') || kw.includes('pipeline'));
+    }
+
     return false;
   };
 
@@ -213,11 +255,11 @@ function getMockAnalysis(text) {
   const matchScore = Math.min(100, Math.round(((matchedMustHaves * 1.5 + matchedNiceToHaves * 0.7) / totalWeight) * 100));
 
   // Category scores
-  const frontendMatched = matchedSkills.filter(s => ["JavaScript", "React.js", "HTML5", "CSS3", "Component-based architecture", "Responsive design"].includes(s)).length;
-  const frontendScore = Math.round((frontendMatched / 6) * 100);
+  const frontendMatched = matchedSkills.filter(s => ["JavaScript", "React.js", "HTML5", "CSS3", "Component-based architecture", "Responsive design", "React Native"].includes(s)).length;
+  const frontendScore = Math.round((frontendMatched / 7) * 100);
   
-  const toolsMatched = matchedSkills.filter(s => ["Git", "Webpack/Vite"].includes(s)).length;
-  const toolsScore = Math.round((toolsMatched / 2) * 100);
+  const toolsMatched = matchedSkills.filter(s => ["Git", "Webpack/Vite", "Docker", "Linux", "CI/CD"].includes(s)).length;
+  const toolsScore = Math.round((toolsMatched / 5) * 100);
 
   let backendScore = 35;
   const hasBackend = candidateContext?.projects?.some(p => {
