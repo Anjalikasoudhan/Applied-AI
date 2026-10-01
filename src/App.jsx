@@ -10,6 +10,8 @@ import { useAuthStore } from './store/useAuthStore'
 import { useProjectStore } from './store/useProjectStore'
 import { fetchProjects } from './services/portfolioService'
 
+import ProtectedRoute from './components/layout/ProtectedRoute'
+
 function App() {
   const { initializeAuth, loading, user } = useAuthStore();
   const { setProjects } = useProjectStore();
@@ -57,8 +59,16 @@ function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/analysis" element={<AnalysisResultsPage />} />
-          <Route path="/portfolio" element={<PortfolioPage />} />
-          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/portfolio" element={
+            <ProtectedRoute>
+              <PortfolioPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/history" element={
+            <ProtectedRoute>
+              <HistoryPage />
+            </ProtectedRoute>
+          } />
           <Route path="/auth" element={<AuthPage />} />
         </Routes>
       </main>
